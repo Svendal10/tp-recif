@@ -1,8 +1,6 @@
 import express from "express";
-import Database from "better-sqlite3";
+import { db } from "./data/db.js";
 import { buildWhere } from "./utils/query-helper.js";
-
-const DB_FILE = process.env.DB_FILE || "recif.db";
 
 export function createApp() {
   const app = express();
@@ -11,7 +9,6 @@ export function createApp() {
 
   // Liste des poissons, avec filtres ?species= et ?status=
   app.get("/fish", (req, res) => {
-    const db = new Database(DB_FILE);
     try {
       const filters: any = {};
       if (req.query.species) filters.species = { op: "eq", value: req.query.species };
@@ -26,15 +23,12 @@ export function createApp() {
 
   // Détail d'un poisson, avec ses demandes d'adoption
   app.get("/fish/:id", (req, res) => {
-    const db = new Database(DB_FILE);
     const fish: any = db.prepare("SELECT * FROM fish WHERE id = ?").get(req.params.id);
     if (!fish) {
-      db.close();
       res.status(404).send("Poisson introuvable");
       return;
     }
     fish.requests = db.prepare("SELECT * FROM adoption_requests WHERE fish_id = ?").all(req.params.id);
-    db.close();
     res.json(fish);
   });
 
@@ -61,14 +55,12 @@ export function createApp() {
       res.status(400).json({ message: "Description trop longue" });
       return;
     }
-    const db = new Database(DB_FILE);
     const info = db
       .prepare(
         "INSERT INTO fish (name, species, breed, birth_date, description, internal_notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'disponible', ?)",
       )
       .run(b.name.trim(), b.species, b.breed || null, b.birthDate || null, b.description || "", b.internalNotes || "", new Date().toISOString());
     const fish = db.prepare("SELECT * FROM fish WHERE id = ?").get(info.lastInsertRowid);
-    db.close();
     res.status(201).json(fish);
   });
 
@@ -91,7 +83,6 @@ export function createApp() {
       res.status(400).json({ error: "Date invalide" });
       return;
     }
-    const db = new Database(DB_FILE);
     const existing = db.prepare("SELECT * FROM fish WHERE id = ?").get(req.params.id);
     if (!existing) {
       res.status(404).json({ error: "Poisson introuvable" });
@@ -104,7 +95,6 @@ export function createApp() {
       db.prepare("UPDATE fish SET " + sets + " WHERE id = ?").run(...keys.map((k) => b[k]), req.params.id);
     }
     const fish = db.prepare("SELECT * FROM fish WHERE id = ?").get(req.params.id);
-    db.close();
     res.json(fish);
   });
 
@@ -114,7 +104,6 @@ export function createApp() {
       res.status(401).send("Non autorisé");
       return;
     }
-    const db = new Database(DB_FILE);
     const fish = db.prepare("SELECT * FROM fish WHERE id = ?").get(req.params.id);
     if (!fish) {
       res.status(404).json({ message: "Poisson introuvable" });
@@ -142,15 +131,12 @@ export function createApp() {
       res.status(400).json({ message: "Message trop long" });
       return;
     }
-    const db = new Database(DB_FILE);
     const fish: any = db.prepare("SELECT * FROM fish WHERE id = ?").get(req.params.id);
     if (!fish) {
-      db.close();
       res.status(404).json({ message: "Poisson introuvable" });
       return;
     }
     if (fish.status !== "disponible") {
-      db.close();
       res.status(409).json({ error: "Ce poisson n'est plus disponible" });
       return;
     }
@@ -161,7 +147,6 @@ export function createApp() {
       .run(req.params.id, b.adopterName.trim(), b.adopterEmail, b.message || "", new Date().toISOString());
     db.prepare("UPDATE fish SET status = 'reserve' WHERE id = ?").run(req.params.id);
     const request = db.prepare("SELECT * FROM adoption_requests WHERE id = ?").get(info.lastInsertRowid);
-    db.close();
     res.status(201).json(request);
   });
 
@@ -171,11 +156,9 @@ export function createApp() {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
-    const db = new Database(DB_FILE);
     const filters: any = {};
     if (req.query.status) filters.status = { op: "eq", value: req.query.status };
     const rows = db.prepare("SELECT * FROM adoption_requests " + buildWhere(filters) + " ORDER BY id").all();
-    db.close();
     res.json(rows);
   });
 
@@ -185,22 +168,18 @@ export function createApp() {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
-    const db = new Database(DB_FILE);
     const request: any = db.prepare("SELECT * FROM adoption_requests WHERE id = ?").get(req.params.id);
     if (!request) {
-      db.close();
       res.status(404).json({ message: "Demande introuvable" });
       return;
     }
     if (request.status !== "en_attente") {
-      db.close();
       res.status(409).json({ message: "Demande déjà traitée" });
       return;
     }
     db.prepare("UPDATE adoption_requests SET status = 'acceptee', decided_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
     db.prepare("UPDATE fish SET status = 'adopte' WHERE id = ?").run(request.fish_id);
     const updated = db.prepare("SELECT * FROM adoption_requests WHERE id = ?").get(req.params.id);
-    db.close();
     console.log("Demande " + req.params.id + " acceptée, il faudrait prévenir " + request.adopter_email);
     res.json(updated);
   });
@@ -211,22 +190,18 @@ export function createApp() {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
-    const db = new Database(DB_FILE);
     const request: any = db.prepare("SELECT * FROM adoption_requests WHERE id = ?").get(req.params.id);
     if (!request) {
-      db.close();
       res.status(404).json({ message: "Demande introuvable" });
       return;
     }
     if (request.status !== "en_attente") {
-      db.close();
       res.status(409).json({ message: "Demande déjà traitée" });
       return;
     }
     db.prepare("UPDATE adoption_requests SET status = 'refusee', decided_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
     db.prepare("UPDATE fish SET status = 'disponible' WHERE id = ?").run(request.fish_id);
     const updated = db.prepare("SELECT * FROM adoption_requests WHERE id = ?").get(req.params.id);
-    db.close();
     console.log("Demande " + req.params.id + " refusée, il faudrait prévenir " + request.adopter_email);
     res.json(updated);
   });
