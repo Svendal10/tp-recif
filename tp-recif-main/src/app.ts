@@ -1,6 +1,15 @@
 import express from "express";
 import { db } from "./data/db.js";
+import { config } from "./config.js";
 import { buildWhere } from "./utils/query-helper.js";
+
+function hasValidApiKey(req: express.Request): boolean {
+  return req.headers["x-api-key"] === config.apiKey;
+}
+
+function isValidSpecies(species: unknown): species is string {
+  return typeof species === "string" && (config.allowedSpecies as readonly string[]).includes(species);
+}
 
 export function createApp() {
   const app = express();
@@ -34,7 +43,7 @@ export function createApp() {
 
   // Ajout d'un poisson (équipe du Récif)
   app.post("/fish", express.json(), (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
@@ -43,7 +52,7 @@ export function createApp() {
       res.status(400).json({ message: "Nom invalide" });
       return;
     }
-    if (!b.species || ["koi", "betta", "poisson-rouge", "guppy"].indexOf(b.species) === -1) {
+    if (!isValidSpecies(b.species)) {
       res.status(400).json({ message: "Espèce invalide" });
       return;
     }
@@ -66,7 +75,7 @@ export function createApp() {
 
   // Modification d'un poisson (équipe du Récif)
   app.put("/fish/:id", express.json(), (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).json({ error: "Clé API manquante" });
       return;
     }
@@ -75,7 +84,7 @@ export function createApp() {
       res.status(400).json({ error: "Nom invalide" });
       return;
     }
-    if (b.species !== undefined && ["koi", "betta", "poisson-rouge"].indexOf(b.species) === -1) {
+    if (b.species !== undefined && !isValidSpecies(b.species)) {
       res.status(400).json({ error: "Espèce invalide" });
       return;
     }
@@ -100,7 +109,7 @@ export function createApp() {
 
   // Suppression d'un poisson (équipe du Récif)
   app.delete("/fish/:id", (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).send("Non autorisé");
       return;
     }
@@ -152,7 +161,7 @@ export function createApp() {
 
   // Liste des demandes (équipe du Récif), filtre ?status=
   app.get("/adoptions", (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
@@ -164,7 +173,7 @@ export function createApp() {
 
   // Accepter une demande (équipe du Récif)
   app.post("/adoptions/:id/accept", (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
@@ -186,7 +195,7 @@ export function createApp() {
 
   // Refuser une demande (équipe du Récif)
   app.post("/adoptions/:id/refuse", (req, res) => {
-    if (req.headers["x-api-key"] !== "recif-secret") {
+    if (!hasValidApiKey(req)) {
       res.status(401).json({ message: "Non autorisé" });
       return;
     }
